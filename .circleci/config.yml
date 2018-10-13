@@ -1,82 +1,30 @@
-default: &defaults
-  docker:
-  - image: circleci/android:api-27-alpha
-  working_directory: ~/repo
-  environment:
-    CC_TEST_REPORTER_ID: 839be4755ebb1ea048509febd89a7235c2149312292e6fc27d31ab4e66a171ce
-  TERM: dumb
-  # Customize the JVM maximum heap limit
-  _JAVA_OPTIONS: "-Xmx2048m -XX:+UnlockExperimentalVMOptions -XX:+UseCGroupMemoryLimitForHeap"
-  GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx2048m"'
-
 version: 2
 jobs:
-  test_unit:
-    <<: *defaults
+  build:
+    working_directory: ~/code
+    docker:
+      - image: circleci/android:api-28-alpha
+    environment:
+      JVM_OPTS: -Xmx3200m
     steps:
       - checkout
-      # Download and cache dependencies
       - restore_cache:
-          keys:
-          - v1-dependencies-{{ checksum "build.gradle" }}
-          # fallback to using the latest cache if no exact match is found
-          - v1-dependencies-
-
-      - run: ./gradlew androidDependencies
+          key: jars-{{ checksum "build.gradle" }}-{{ checksum  "app/build.gradle" }}
+#      - run:
+#         name: Chmod permissions #if permission for Gradlew Dependencies fail, use this. 
+#         command: sudo chmod +x ./gradlew
+      - run:
+          name: Download Dependencies
+          command: ./gradlew androidDependencies
       - save_cache:
           paths:
             - ~/.gradle
-          key: v1-dependencies-{{ checksum "build.gradle" }}
-
-      # Running unit tests
+          key: jars-{{ checksum "build.gradle" }}-{{ checksum  "app/build.gradle" }}
       - run:
-          name: Running unit tests on source code
-          command: |
-            cd ~/repo
-            ./gradlew test
-            ls -a app/build/outputs/logs
-      #Storing unit test reports
+          name: Run Tests
+          command: ./gradlew lint test
       - store_artifacts:
-          path: ~/repo/app/build/reports
+          path: app/build/reports
           destination: reports
-      - store_artifacts:
-          path: ~/repo/app/build/outputs/androidTest-results
-          destination: reports
-
-  report_coverage:
-    <<: *defaults
-    steps:
-      - checkout
-      - restore_cache:
-          keys:
-          - v1-dependencies-{{ checksum "build.gradle" }}
-          - v1-dependencies-
-      - run:
-          name: Download dependencies
-          command: ./gradlew androidDependencies
-      - run:
-          name: Code Climate Test Setup
-          command: |
-            curl -L https://codeclimate.com/downloads/test-reporter/test-reporter-latest-linux-amd64 > ./cc-test-reporter
-            chmod +x ./cc-test-reporter
-      - run:
-          name: Code Climate Pretest
-          command: ./cc-test-reporter before-build
-      - run:
-          name: Generate coverage report
-          command: ./gradlew cobertura
-      - run:
-          name: Upload coverage to code climate
-          command: |
-            ./cc-test-reporter format-coverage ~/repo/app/build/reports/cobertura/coverage.xml -t cobertura
-            ./cc-test-reporter upload-coverage
-      - store_artifacts:
-          path: app/build/reports/
-          destination: /reports/
-
-## Workflows
-workflows:
-  version: 2
-  build:
-    jobs:
-      - report_coverage
+      - store_test_results:
+          path: app/build/test-results
